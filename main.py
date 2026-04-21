@@ -1,9 +1,13 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from agent import chat
+from agent import chat, chat_with_history, reset_history, daily_briefing
+import os
 
-app = FastAPI(title="CTO Agent", version="1.0.0")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
+
+app = FastAPI(title="CTO Agent", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -12,7 +16,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Historial en memoria (se resetea si el servidor se reinicia)
+# historial en memoria (fallback sin Supabase)
 conversation_history: list[dict] = []
 
 class MessageRequest(BaseModel):
@@ -22,6 +26,8 @@ class MessageResponse(BaseModel):
     response: str
     history_length: int
 
+# ── endpoints REST originales ────────────────────────────────────────────────
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -30,23 +36,10 @@ def health():
 def chat_endpoint(req: MessageRequest):
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
-
-    conversation_history.append({
-        "role": "user",
-        "content": req.message
-    })
-
+    conversation_history.append({"role": "user", "content": req.message})
     response_text = chat(conversation_history)
-
-    conversation_history.append({
-        "role": "assistant",
-        "content": response_text
-    })
-
-    return MessageResponse(
-        response=response_text,
-        history_length=len(conversation_history)
-    )
+    conversation_history.append({"role": "assistant", "content": response_text})
+    return MessageResponse(response=response_text, history_length=len(conversation_history))
 
 @app.delete("/chat/reset")
 def reset_conversation():
@@ -55,7 +48,6 @@ def reset_conversation():
 
 @app.get("/context/summary")
 def context_summary():
-    """Devuelve un resumen del contexto cargado (útil para verificar que todo esté bien)"""
     import json
     with open("context.json", "r", encoding="utf-8") as f:
         ctx = json.load(f)
@@ -66,3 +58,56 @@ def context_summary():
         "okrs": [kr["kr_id"] for kr in ctx.get("okrs_q2_2026", [])],
         "open_decisions": len(ctx.get("open_decisions", [])),
     }
+
+# ── endpoints Telegram ───────────────────────────────────────────────────────
+
+import httpx
+
+async def send_telegram_message(chat_id: str, text: str):
+    """Envía un mensaje a Telegram."""
+    async with httpx.AsyncClient() as client:
+        await client.post(f"{TELEGRAM_API}/sendMessage", json={
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "HTML"
+        })
+
+@app.post("/telegram/webhook")
+async def telegram_webhook(request: Request):
+    """Recibe mensajes de Telegram vía webhook."""
+    data = await request.json()
+
+    message = data.get("message", {})
+    chat_id = str(message.get("chat", {}).get("id", ""))
+    text = message.get("text", "").strip()
+
+    if not chat_id or not text:
+        return {"ok": True}
+
+    # comando /reset
+    if text == "/reset":
+        reset_history(chat_id)
+        await send_telegram_message(chat_id, "🗑️ Historial borrado. Empezamos de cero.")
+        return {"ok": True}
+
+    # comando /briefing
+    if text == "/briefing":
+        response = daily_briefing(chat_id)
+        await send_telegram_message(chat_id, response)
+        return {"ok": True}
+
+    # mensaje normal
+    response = chat_with_history(chat_id, text)
+    await send_telegram_message(chat_id, response)
+    return {"ok": True}
+
+@app.post("/telegram/briefing")
+async def trigger_briefing(request: Request):
+    """Endpoint para que Make dispare el briefing diario."""
+    data = await request.json()
+    chat_id = str(data.get("chat_id", ""))
+    if not chat_id:
+        raise HTTPException(status_code=400, detail="chat_id requerido")
+    response = daily_briefing(chat_id)
+    await send_telegram_message(chat_id, response)
+    return {"ok": True, "message": "Briefing enviado"}
