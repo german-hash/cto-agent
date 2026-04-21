@@ -1,8 +1,9 @@
 import json
 import os
+import re
 from anthropic import Anthropic
 from supabase import create_client, Client
-from notion_client import get_notion_notes
+from notion_client import get_notion_notes, NOTION_PAGES
 
 client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
@@ -22,8 +23,8 @@ German tiene a cargo dos sub-áreas:
 == TU FORMA DE OPERAR ==
 
 1:1s y equipo:
-- Cuando te pidan preparar un 1:1, SIEMPRE usá la tool get_notion_notes para traer las notas reales de esa persona antes de armar la agenda.
-- Proponé agenda concreta con preguntas sugeridas basadas en las notas reales.
+- Cuando te pidan preparar un 1:1, usá las notas de Notion que se inyectan en el mensaje para armar una agenda concreta y relevante.
+- Proponé agenda con preguntas sugeridas basadas en los temas reales de las últimas reuniones.
 - Recordá que Alex y Pili no reportan directo a German sino a Gallo.
 
 Proyectos y OKRs:
@@ -48,23 +49,6 @@ Decisiones técnicas:
 == CONTEXTO ACTUAL ==
 {context}
 """
-
-TOOLS = [
-    {
-        "name": "get_notion_notes",
-        "description": "Trae las notas de reuniones de una persona desde Notion. Usá esta tool siempre que necesites preparar un 1:1 o consultar el historial de reuniones con alguien.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "person": {
-                    "type": "string",
-                    "description": "Nombre de la persona. Valores válidos: pablito, tec lead, zorro, saez, her, nonides, gallo, carli, carly, pablo e, diego m, marin, gonza"
-                }
-            },
-            "required": ["person"]
-        }
-    }
-]
 
 def load_context(path: str = "context.json") -> str:
     with open(path, "r", encoding="utf-8") as f:
@@ -96,10 +80,28 @@ def reset_history(chat_id: str):
         .eq("chat_id", chat_id) \
         .execute()
 
-def process_tool_call(tool_name: str, tool_input: dict) -> str:
-    if tool_name == "get_notion_notes":
-        return get_notion_notes(tool_input["person"])
-    return f"Tool '{tool_name}' no reconocida."
+def detect_person_in_message(message: str) -> str | None:
+    """Detecta si el mensaje menciona a alguien del equipo."""
+    message_lower = message.lower()
+    for key in NOTION_PAGES.keys():
+        if key in message_lower:
+            return key
+    return None
+
+def enrich_message_with_notion(message: str) -> str:
+    """Si el mensaje es sobre un 1:1, inyecta las notas de Notion."""
+    keywords_1on1 = ["1:1", "one on one", "reunion", "reunión", "preparame", "preparar"]
+    is_1on1 = any(k in message.lower() for k in keywords_1on1)
+
+    if not is_1on1:
+        return message
+
+    person = detect_person_in_message(message)
+    if not person:
+        return message
+
+    notes = get_notion_notes(person)
+    return f"{message}\n\n[Notas de Notion para {person}]\n{notes}"
 
 def chat(messages: list[dict]) -> str:
     """Chat sin persistencia (endpoint REST original)."""
@@ -107,62 +109,28 @@ def chat(messages: list[dict]) -> str:
         model="claude-opus-4-5",
         max_tokens=2048,
         system=build_system_prompt(),
-        tools=TOOLS,
         messages=messages
     )
-    # Procesar tool use si es necesario
-    while response.stop_reason == "tool_use":
-        tool_use = next(b for b in response.content if b.type == "tool_use")
-        tool_result = process_tool_call(tool_use.name, tool_use.input)
-        messages = messages + [
-            {"role": "assistant", "content": response.content},
-            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tool_use.id, "content": tool_result}]}
-        ]
-        response = client.messages.create(
-            model="claude-opus-4-5",
-            max_tokens=2048,
-            system=build_system_prompt(),
-            tools=TOOLS,
-            messages=messages
-        )
     text_block = next((b for b in response.content if hasattr(b, "text")), None)
     return text_block.text if text_block else "Sin respuesta."
 
 def chat_with_history(chat_id: str, user_message: str) -> str:
-    """Chat con historial persistido en Supabase y tool use."""
-    save_message(chat_id, "user", user_message)
+    """Chat con historial persistido en Supabase, con enriquecimiento de Notion."""
+    # Enriquecer con Notion si aplica
+    enriched_message = enrich_message_with_notion(user_message)
+
+    save_message(chat_id, "user", enriched_message)
     messages = get_history(chat_id)
 
     response = client.messages.create(
         model="claude-opus-4-5",
         max_tokens=2048,
         system=build_system_prompt(),
-        tools=TOOLS,
         messages=messages
     )
 
-    # Agentic loop para tool use
-    while response.stop_reason == "tool_use":
-        tool_use = next(b for b in response.content if b.type == "tool_use")
-        tool_result = process_tool_call(tool_use.name, tool_use.input)
-
-        # Serializar content para Supabase
-        assistant_content = json.dumps([b.model_dump() for b in response.content], ensure_ascii=False)
-        save_message(chat_id, "assistant", assistant_content)
-        save_message(chat_id, "user", json.dumps([{
-            "type": "tool_result",
-            "tool_use_id": tool_use.id,
-            "content": tool_result
-        }], ensure_ascii=False))
-
-        messages = get_history(chat_id)
-        response = client.messages.create(
-            model="claude-opus-4-5",
-            max_tokens=2048,
-            system=build_system_prompt(),
-            tools=TOOLS,
-            messages=messages
-        )
+    if not response.content:
+        raise ValueError("Respuesta vacía de Anthropic")
 
     text_block = next((b for b in response.content if hasattr(b, "text")), None)
     response_text = text_block.text if text_block else "Sin respuesta."
