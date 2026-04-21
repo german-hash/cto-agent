@@ -103,6 +103,8 @@ async def telegram_webhook(request: Request):
 
     except Exception as e:
         logger.error(f"Error en webhook: {e}", exc_info=True)
+        if chat_id:
+            await send_telegram_message(chat_id, "⚠️ Hubo un error procesando tu mensaje. Intentá de nuevo en un momento.")
         return {"ok": True}
 
 @app.post("/telegram/briefing")

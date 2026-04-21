@@ -96,6 +96,8 @@ def chat_with_history(chat_id: str, user_message: str) -> str:
         system=build_system_prompt(),
         messages=history
     )
+    if not response.content:
+        raise ValueError("Respuesta vacía de Anthropic")
     response_text = response.content[0].text
     save_message(chat_id, "assistant", response_text)
     return response_text
