@@ -1,0 +1,290 @@
+{
+  "cto": {
+    "name": "German Guerriero",
+    "area": "Tecnología Digital",
+    "company": "GoldenArch (McDonald's Argentina)",
+    "current_focus": "Ejecución Q2-2026: entregas de features críticas, uptime del ecosistema digital ≥99.70%, homologación y ahorro de costos"
+  },
+
+  "org_structure": {
+    "sub_areas": [
+      {
+        "name": "Plataformas Digitales",
+        "description": "Desarrollo y operación de la app mobile propia de ecommerce QSR",
+        "teams": ["Desarrollo Back", "Desarrollo Front", "QA", "Soporte", "Infra"]
+      },
+      {
+        "name": "Flex",
+        "description": "Hub de pedidos y gestión de catálogos del ecosistema digital",
+        "sub_areas": [
+          {
+            "name": "Flex Digital",
+            "description": "Toma catálogos de restaurantes y los expone a las plataformas (app propia y terceros). Recibe pedidos de cualquier plataforma e inserta en el POS del local."
+          },
+          {
+            "name": "Menu Editor",
+            "description": "Organiza y agrupa catálogos de productos de forma estética. Los consume Flex Digital para disponibilizarlos a las plataformas."
+          }
+        ]
+      }
+    ]
+  },
+
+  "team": [
+    {
+      "name": "Pablo C",
+      "role": "Chapter Lead - Business Analysts",
+      "area": "Plataformas Digitales",
+      "reports_to": "German",
+      "1on1_frequency": "semanal",
+      "last_1on1": "2026-04-21",
+      "pending_topics": [],
+      "notes": ""
+    },
+    {
+      "name": "Her",
+      "role": "Líder Mobile",
+      "area": "Plataformas Digitales",
+      "reports_to": "German",
+      "1on1_frequency": "semanal",
+      "last_1on1": "2026-04-21",
+      "pending_topics": [],
+      "notes": ""
+    },
+    {
+      "name": "Gonza",
+      "role": "Líder de Soporte",
+      "area": "Plataformas Digitales",
+      "reports_to": "German",
+      "1on1_frequency": "semanal",
+      "last_1on1": "2026-04-21",
+      "pending_topics": [],
+      "notes": ""
+    },
+    {
+      "name": "Diego",
+      "role": "DevOps",
+      "area": "Plataformas Digitales",
+      "reports_to": "German",
+      "1on1_frequency": "semanal",
+      "last_1on1": "2026-04-21",
+      "pending_topics": [],
+      "notes": ""
+    },
+    {
+      "name": "Gallo",
+      "role": "Product Owner - Flex Digital y Menu Editor",
+      "area": "Flex",
+      "reports_to": "German",
+      "direct_reports": ["Alex", "Pili"],
+      "1on1_frequency": "semanal",
+      "last_1on1": "2026-04-21",
+      "pending_topics": [],
+      "notes": ""
+    },
+    {
+      "name": "Pablo N",
+      "role": "Líder de Arquitectura e Infra",
+      "area": "Plataformas Digitales",
+      "reports_to": "German",
+      "1on1_frequency": "quincenal",
+      "last_1on1": "2026-04-14",
+      "pending_topics": [],
+      "notes": ""
+    },
+    {
+      "name": "Zorro",
+      "role": "Líder Desarrollo iOS",
+      "area": "Plataformas Digitales",
+      "reports_to": "German",
+      "1on1_frequency": "quincenal",
+      "last_1on1": "2026-04-14",
+      "pending_topics": [],
+      "notes": ""
+    },
+    {
+      "name": "Saez",
+      "role": "Líder Desarrollo Android",
+      "area": "Plataformas Digitales",
+      "reports_to": "German",
+      "1on1_frequency": "quincenal",
+      "last_1on1": "2026-04-14",
+      "pending_topics": [],
+      "notes": ""
+    },
+    {
+      "name": "Caro",
+      "role": "Líder de QA",
+      "area": "Plataformas Digitales",
+      "reports_to": "German",
+      "1on1_frequency": "quincenal",
+      "last_1on1": "2026-04-14",
+      "pending_topics": [],
+      "notes": ""
+    },
+    {
+      "name": "Alex",
+      "role": "Líder Flex Digital",
+      "area": "Flex",
+      "reports_to": "Gallo",
+      "1on1_frequency": null,
+      "last_1on1": null,
+      "pending_topics": [],
+      "notes": ""
+    },
+    {
+      "name": "Pili",
+      "role": "Líder Menu Editor",
+      "area": "Flex",
+      "reports_to": "Gallo",
+      "1on1_frequency": null,
+      "last_1on1": null,
+      "pending_topics": [],
+      "notes": ""
+    }
+  ],
+
+  "my_1on1s": [
+    {
+      "name": "Diego M",
+      "role": "VP Regional de Tecnología",
+      "relationship": "mi jefe directo",
+      "frequency": "semanal",
+      "last_meeting": "2026-04-21",
+      "pending_topics": [],
+      "notes": ""
+    }
+  ],
+
+  "recurring_meetings": [
+    {
+      "name": "Semanal BIT",
+      "participants": "Diego M + peers",
+      "frequency": "semanal",
+      "notes": "Reunión de equipo con jefe y pares"
+    }
+  ],
+
+  "stakeholders": [
+    {
+      "name": "Pablo E",
+      "role": "Líder de Negocio - Plataformas Digitales",
+      "relationship": "cliente interno / dependencia línea de puntos",
+      "frequency": "semanal 1:1",
+      "last_meeting": "2026-04-21",
+      "communication_style": "",
+      "pending_topics": [],
+      "notes": ""
+    },
+    {
+      "name": "Carly",
+      "role": "Líder de Negocio - Digital",
+      "relationship": "cliente interno / dependencia línea de puntos",
+      "frequency": "semanal 1:1",
+      "last_meeting": "2026-04-21",
+      "communication_style": "",
+      "pending_topics": [],
+      "notes": ""
+    }
+  ],
+
+  "okrs_q2_2026": [
+    {
+      "kr_id": "KR IT-01-01",
+      "title": "Cumplir en tiempo y forma las entregas del roadmap digital Q2-2026",
+      "status": "in_progress",
+      "features": [
+        {
+          "id": "457627",
+          "title": "Eliminar la dependencia de actualizaciones nocturnas para cambios de puntos en el catálogo de premios",
+          "status": "to_do",
+          "owner": "German Ariel Guerriero"
+        },
+        {
+          "id": "457737",
+          "title": "Implementacion de Misiones",
+          "status": "in_progress",
+          "owner": "German Ariel Guerriero"
+        },
+        {
+          "id": "457744",
+          "title": "Integración Agéntic Promotion con App",
+          "status": "in_progress",
+          "owner": "German Ariel Guerriero"
+        },
+        {
+          "id": "457748",
+          "title": "Redención de Promos y Canje Presencial",
+          "status": "in_progress",
+          "owner": "German Ariel Guerriero"
+        },
+        {
+          "id": "457637",
+          "title": "Precio diferenciado DLV para 3PO y 3PL",
+          "status": "in_progress",
+          "owner": "German Ariel Guerriero"
+        },
+        {
+          "id": "457642",
+          "title": "Motor de ventas 99Food",
+          "status": "in_progress",
+          "owner": "German Ariel Guerriero"
+        },
+        {
+          "id": "457646",
+          "title": "Desarrollos Flex D para Sesame",
+          "status": "in_progress",
+          "owner": "German Ariel Guerriero"
+        }
+      ]
+    },
+    {
+      "kr_id": "KR IT-02-01",
+      "title": "Plan de homologación",
+      "status": "in_progress",
+      "features": [
+        {
+          "id": "457619",
+          "title": "Segregación Roles en Dashboard",
+          "status": "to_do",
+          "owner": "German Ariel Guerriero"
+        },
+        {
+          "id": "457623",
+          "title": "Sanitización de Pagos con Tarjeta",
+          "status": "to_do",
+          "owner": "German Ariel Guerriero"
+        }
+      ]
+    },
+    {
+      "kr_id": "KR IT-03-01",
+      "title": "Generar ahorros necesarios",
+      "status": "in_progress",
+      "features": []
+    },
+    {
+      "kr_id": "KR IT-03-02",
+      "title": "Cumplimiento de KPIs del ecosistema digital",
+      "status": "in_progress",
+      "features": [
+        {
+          "id": "457760",
+          "title": "PD - FLEX - Upgrade Tecnológico Continuo Ecosistema",
+          "status": "in_progress",
+          "owner": "German Ariel Guerriero"
+        },
+        {
+          "id": "457758",
+          "title": "PD - FLEX - Uptime de Ecosistema Digital mayor o igual al 99.70%",
+          "status": "in_progress",
+          "owner": "German Ariel Guerriero"
+        }
+      ]
+    }
+  ],
+
+  "open_decisions": [],
+
+  "next_events": []
+}
