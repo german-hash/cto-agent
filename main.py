@@ -3,6 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from agent import chat, chat_with_history, reset_history, daily_briefing
 import os
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
@@ -16,7 +20,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# historial en memoria (fallback sin Supabase)
 conversation_history: list[dict] = []
 
 class MessageRequest(BaseModel):
@@ -25,8 +28,6 @@ class MessageRequest(BaseModel):
 class MessageResponse(BaseModel):
     response: str
     history_length: int
-
-# ── endpoints REST originales ────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
@@ -59,51 +60,53 @@ def context_summary():
         "open_decisions": len(ctx.get("open_decisions", [])),
     }
 
-# ── endpoints Telegram ───────────────────────────────────────────────────────
-
 import httpx
 
 async def send_telegram_message(chat_id: str, text: str):
-    """Envía un mensaje a Telegram."""
     async with httpx.AsyncClient() as client:
-        await client.post(f"{TELEGRAM_API}/sendMessage", json={
+        r = await client.post(f"{TELEGRAM_API}/sendMessage", json={
             "chat_id": chat_id,
             "text": text,
             "parse_mode": "HTML"
         })
+        logger.info(f"Telegram sendMessage response: {r.status_code} {r.text}")
 
 @app.post("/telegram/webhook")
 async def telegram_webhook(request: Request):
-    """Recibe mensajes de Telegram vía webhook."""
-    data = await request.json()
+    try:
+        data = await request.json()
+        logger.info(f"Webhook payload: {data}")
 
-    message = data.get("message", {})
-    chat_id = str(message.get("chat", {}).get("id", ""))
-    text = message.get("text", "").strip()
+        message = data.get("message", {})
+        chat_id = str(message.get("chat", {}).get("id", ""))
+        text = message.get("text", "").strip()
 
-    if not chat_id or not text:
-        return {"ok": True}
+        logger.info(f"chat_id={chat_id} text={text}")
 
-    # comando /reset
-    if text == "/reset":
-        reset_history(chat_id)
-        await send_telegram_message(chat_id, "🗑️ Historial borrado. Empezamos de cero.")
-        return {"ok": True}
+        if not chat_id or not text:
+            return {"ok": True}
 
-    # comando /briefing
-    if text == "/briefing":
-        response = daily_briefing(chat_id)
+        if text == "/reset":
+            reset_history(chat_id)
+            await send_telegram_message(chat_id, "🗑️ Historial borrado. Empezamos de cero.")
+            return {"ok": True}
+
+        if text == "/briefing":
+            response = daily_briefing(chat_id)
+            await send_telegram_message(chat_id, response)
+            return {"ok": True}
+
+        response = chat_with_history(chat_id, text)
+        logger.info(f"Agent response: {response[:100]}")
         await send_telegram_message(chat_id, response)
         return {"ok": True}
 
-    # mensaje normal
-    response = chat_with_history(chat_id, text)
-    await send_telegram_message(chat_id, response)
-    return {"ok": True}
+    except Exception as e:
+        logger.error(f"Error en webhook: {e}", exc_info=True)
+        return {"ok": True}
 
 @app.post("/telegram/briefing")
 async def trigger_briefing(request: Request):
-    """Endpoint para que Make dispare el briefing diario."""
     data = await request.json()
     chat_id = str(data.get("chat_id", ""))
     if not chat_id:
