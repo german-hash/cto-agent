@@ -144,3 +144,48 @@ def daily_briefing(chat_id: str) -> str:
 3. ⚠️ Algo que merezca atención hoy
 Sé breve y directo, formato Telegram."""
     return chat_with_history(chat_id, prompt)
+
+async def chat_with_history_image(chat_id: str, user_message: str, image_b64: str) -> str:
+    """Chat con imagen — manda la imagen a Claude con visión."""
+    # Guardar el mensaje del usuario en historial
+    save_message(chat_id, "user", f"[imagen] {user_message}")
+
+    # Armar mensaje con imagen para Claude
+    messages = get_history(chat_id)
+
+    # Reemplazar el último mensaje con el contenido multimodal
+    image_message = {
+        "role": "user",
+        "content": [
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/jpeg",
+                    "data": image_b64
+                }
+            },
+            {
+                "type": "text",
+                "text": user_message
+            }
+        ]
+    }
+
+    # Historial previo + mensaje con imagen
+    messages_with_image = messages[:-1] + [image_message]
+
+    response = client.messages.create(
+        model="claude-opus-4-5",
+        max_tokens=2048,
+        system=build_system_prompt(),
+        messages=messages_with_image
+    )
+
+    if not response.content:
+        raise ValueError("Respuesta vacía de Anthropic")
+
+    text_block = next((b for b in response.content if hasattr(b, "text")), None)
+    response_text = text_block.text if text_block else "Sin respuesta."
+    save_message(chat_id, "assistant", response_text)
+    return response_text
