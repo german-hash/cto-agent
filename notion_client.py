@@ -247,3 +247,15 @@ def add_task(task: str, person: str = "") -> str:
         return f"✅ Tarea agregada: {text}"
     except Exception as e:
         return f"Error al escribir tarea en Notion: {str(e)}"
+
+
+def get_tasks() -> str:
+    """Lee las tareas pendientes de la página Tareas CTO Agent."""
+    try:
+        with httpx.Client(timeout=15) as client:
+            lines = _fetch_children(TAREAS_PAGE_ID, client, depth=0)
+        if not lines:
+            return "No hay tareas registradas en Tareas CTO Agent."
+        return "📋 Tareas CTO Agent:\n" + "\n".join(lines)
+    except Exception as e:
+        return f"Error al leer tareas: {str(e)}"

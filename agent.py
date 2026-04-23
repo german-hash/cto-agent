@@ -3,7 +3,7 @@ import os
 import re
 from anthropic import Anthropic
 from supabase import create_client, Client
-from notion_client import get_notion_notes, add_note_to_person, add_task, NOTION_PAGES
+from notion_client import get_notion_notes, add_note_to_person, add_task, get_tasks, NOTION_PAGES
 
 client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
@@ -89,19 +89,39 @@ def detect_person_in_message(message: str) -> str | None:
     return None
 
 def enrich_message_with_notion(message: str) -> str:
-    """Si el mensaje es sobre un 1:1, inyecta las notas de Notion."""
-    keywords_1on1 = ["1:1", "one on one", "reunion", "reunión", "preparame", "preparar"]
-    is_1on1 = any(k in message.lower() for k in keywords_1on1)
+    """Inyecta contexto de Notion según el tipo de consulta."""
+    msg = message.lower()
 
-    if not is_1on1:
-        return message
+    # Lectura de tareas pendientes
+    keywords_tasks = ["pendiente", "tarea", "tareas", "to do", "todo", "leeme las tareas", "que tengo pendiente"]
+    if any(k in msg for k in keywords_tasks):
+        tasks = get_tasks()
+        return f"{message}\n\n[Tareas CTO Agent]\n{tasks}"
 
+    # Resumen de múltiples 1:1s
+    keywords_summary = ["resumen de 1:1", "resumen de reuniones", "1:1 de la semana", "reuniones de la semana", "leeme los 1:1"]
+    if any(k in msg for k in keywords_summary):
+        all_notes = []
+        for person_key in ["her", "gallo", "pablo c", "gonza", "diego"]:
+            notes = get_notion_notes(person_key, max_toggles=1)
+            all_notes.append(notes)
+        return f"{message}\n\n[Resumen de últimas reuniones]\n" + "\n---\n".join(all_notes)
+
+    # Lectura de notas de una persona específica
+    keywords_read = ["leeme", "contame", "qué pasó", "que paso", "qué temas", "que temas", "qué hablamos", "que hablamos", "notas de", "resumen de"]
     person = detect_person_in_message(message)
-    if not person:
-        return message
+    if person and any(k in msg for k in keywords_read):
+        notes = get_notion_notes(person)
+        return f"{message}\n\n[Notas de Notion para {person}]\n{notes}"
 
-    notes = get_notion_notes(person)
-    return f"{message}\n\n[Notas de Notion para {person}]\n{notes}"
+    # Preparación de 1:1
+    keywords_1on1 = ["1:1", "one on one", "reunion", "reunión", "preparame", "preparar", "1 a 1"]
+    is_1on1 = any(k in msg for k in keywords_1on1)
+    if is_1on1 and person:
+        notes = get_notion_notes(person)
+        return f"{message}\n\n[Notas de Notion para {person}]\n{notes}"
+
+    return message
 
 def chat(messages: list[dict]) -> str:
     """Chat sin persistencia (endpoint REST original)."""
@@ -197,6 +217,25 @@ async def chat_with_history_image(chat_id: str, user_message: str, image_b64: st
     save_message(chat_id, "assistant", response_text)
     return response_text
 
+def _extract_topics_with_ai(text: str) -> list[str]:
+    """Usa Claude para extraer los temas de un texto libre de reunión."""
+    response = client.messages.create(
+        model="claude-opus-4-5",
+        max_tokens=500,
+        system="Extraé los temas/puntos tratados en esta nota de reunión. Devolvé SOLO una lista JSON de strings, sin explicación ni markdown. Ejemplo: ["tema 1", "tema 2"]",
+        messages=[{"role": "user", "content": text}]
+    )
+    import json, re
+    raw = response.content[0].text.strip()
+    # Limpiar posibles backticks
+    raw = re.sub(r"```.*?```", "", raw, flags=re.DOTALL).strip()
+    try:
+        topics = json.loads(raw)
+        return [str(t) for t in topics if t]
+    except Exception:
+        # Fallback: parseo simple
+        return _parse_topics(text)
+
 def _parse_topics(text: str) -> list[str]:
     """Parsea un texto con temas separados por comas, puntos o saltos de línea."""
     import re
@@ -225,7 +264,7 @@ def handle_write_intent(message: str) -> str | None:
     keywords_task = ["tarea", "pendiente", "to do", "todo", "hacer"]
     is_task = any(k in msg for k in keywords_task)
 
-    keywords_1on1 = ["1:1", "one on one", "reunion", "reunión", "1 a 1"]
+    keywords_1on1 = ["1:1", "one on one", "reunion", "reunión", "1 a 1", "uno a uno", "el 1", "registro", "registrar en"]
     is_1on1 = any(k in msg for k in keywords_1on1)
 
     person = detect_person_in_message(message)
@@ -246,9 +285,8 @@ def handle_write_intent(message: str) -> str | None:
         return add_task(content, person or "")
 
     if is_1on1 and person:
-        topics = _parse_topics(content)
-        if not topics:
-            topics = [content]
+        # Usar Claude para extraer los temas del texto libre
+        topics = _extract_topics_with_ai(content)
         return add_note_to_person(person, topics, author)
 
     if person:
