@@ -1,6 +1,8 @@
 import os
 import httpx
-from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 NOTION_API = "https://api.notion.com/v1"
@@ -12,7 +14,6 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-# Mapa de persona -> page ID
 NOTION_PAGES = {
     "pablito": "027d54e4877744e38a775a0ce06e8d4c",
     "pablo c": "027d54e4877744e38a775a0ce06e8d4c",
@@ -28,54 +29,126 @@ NOTION_PAGES = {
     "diego m": "06c580a5496d4532afc5b315d82c0e1a",
     "marin": "06c580a5496d4532afc5b315d82c0e1a",
     "gonza": "6e048b24cbcf4b12b1cad726f31e6eca",
+    "reunion dce": "bdaf76e99dc5438cb65bb951958a7e83",
+    "dce": "bdaf76e99dc5438cb65bb951958a7e83",
 }
 
-def _extract_text(block: dict) -> str:
-    """Extrae texto plano de un bloque de Notion."""
+def _get_rich_text(block: dict) -> str:
     btype = block.get("type", "")
     content = block.get(btype, {})
     rich_text = content.get("rich_text", [])
-    text = "".join([t.get("plain_text", "") for t in rich_text])
+    return "".join([t.get("plain_text", "") for t in rich_text])
 
-    if btype in ("bulleted_list_item", "numbered_list_item"):
-        return f"• {text}"
-    elif btype == "toggle":
-        return f"\n📅 {text}"
-    elif btype.startswith("heading"):
-        return f"\n**{text}**"
-    return text
+def _fetch_children(block_id: str, client: httpx.Client, depth: int = 0, max_depth: int = 4) -> list[str]:
+    if depth > max_depth:
+        return []
+    lines = []
+    try:
+        r = client.get(
+            f"{NOTION_API}/blocks/{block_id}/children",
+            headers=HEADERS,
+            params={"page_size": 100}
+        )
+        r.raise_for_status()
+        blocks = r.json().get("results", [])
+    except Exception as e:
+        logger.error(f"Error fetching children of {block_id}: {e}")
+        return []
 
-def get_notion_notes(person: str, max_blocks: int = 80) -> str:
-    """
-    Trae las notas de reuniones de una persona desde Notion.
-    Retorna texto formateado con las últimas reuniones.
-    """
+    indent = "  " * depth
+    for block in blocks:
+        btype = block.get("type", "")
+        text = _get_rich_text(block)
+        has_children = block.get("has_children", False)
+
+        if btype == "toggle":
+            if text:
+                lines.append(f"\n{indent}📅 {text}")
+            if has_children:
+                lines.extend(_fetch_children(block["id"], client, depth + 1, max_depth))
+        elif btype in ("bulleted_list_item", "numbered_list_item"):
+            if text:
+                lines.append(f"{indent}• {text}")
+            if has_children:
+                lines.extend(_fetch_children(block["id"], client, depth + 1, max_depth))
+        elif btype.startswith("heading"):
+            if text:
+                lines.append(f"\n{indent}**{text}**")
+        elif btype == "paragraph":
+            if text:
+                lines.append(f"{indent}{text}")
+            if has_children:
+                lines.extend(_fetch_children(block["id"], client, depth + 1, max_depth))
+        elif btype == "quote":
+            if text:
+                lines.append(f"{indent}> {text}")
+        elif btype == "child_page":
+            title = block.get("child_page", {}).get("title", "")
+            if title:
+                lines.append(f"\n{indent}📄 {title}")
+                if has_children:
+                    lines.extend(_fetch_children(block["id"], client, depth + 1, max_depth))
+
+    return lines
+
+def get_notion_notes(person: str, max_toggles: int = 5) -> str:
     person_key = person.lower().strip()
     page_id = NOTION_PAGES.get(person_key)
 
     if not page_id:
-        return f"No encontré página de Notion para '{person}'. Personas disponibles: {', '.join(set(NOTION_PAGES.keys()))}"
+        return f"No encontré página de Notion para '{person}'."
 
     try:
-        with httpx.Client() as client:
+        with httpx.Client(timeout=20) as client:
             r = client.get(
                 f"{NOTION_API}/blocks/{page_id}/children",
                 headers=HEADERS,
-                params={"page_size": max_blocks}
+                params={"page_size": 50}
             )
             r.raise_for_status()
-            blocks = r.json().get("results", [])
+            top_blocks = r.json().get("results", [])
 
-        lines = []
-        for block in blocks:
-            text = _extract_text(block)
-            if text.strip():
-                lines.append(text)
+            # DEBUG: loguear tipos de bloques
+            block_summary = [(b.get("type"), _get_rich_text(b)[:50], b.get("has_children")) for b in top_blocks]
+            logger.info(f"Notion blocks for {person}: {block_summary}")
 
-        if not lines:
-            return f"La página de {person} está vacía o no tiene contenido legible."
+            all_lines = []
+            toggle_count = 0
 
-        return f"📋 Notas de reuniones con {person}:\n\n" + "\n".join(lines)
+            for block in top_blocks:
+                btype = block.get("type", "")
+                text = _get_rich_text(block)
+                has_children = block.get("has_children", False)
+
+                if btype == "toggle":
+                    if toggle_count >= max_toggles:
+                        continue
+                    toggle_count += 1
+                    all_lines.append(f"\n📅 {text}")
+                    if has_children:
+                        all_lines.extend(_fetch_children(block["id"], client, depth=1))
+
+                elif btype == "child_page":
+                    # Algunas páginas usan child_pages en lugar de toggles
+                    if toggle_count >= max_toggles:
+                        continue
+                    toggle_count += 1
+                    title = block.get("child_page", {}).get("title", text)
+                    all_lines.append(f"\n📄 {title}")
+                    if has_children:
+                        all_lines.extend(_fetch_children(block["id"], client, depth=1))
+
+                else:
+                    # Bloques normales (headings, paragraphs, bullets)
+                    if text.strip():
+                        all_lines.append(text)
+                    if has_children:
+                        all_lines.extend(_fetch_children(block["id"], client, depth=1))
+
+            if not all_lines:
+                return f"La página de {person} no tiene contenido legible."
+
+            return f"📋 Notas de reuniones con {person}:\n" + "\n".join(all_lines)
 
     except httpx.HTTPStatusError as e:
         return f"Error al acceder a Notion para '{person}': {e.response.status_code} - {e.response.text}"
