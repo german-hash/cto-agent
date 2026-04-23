@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from agent import chat, chat_with_history, chat_with_history_image, reset_history, daily_briefing
 from whisper_client import transcribe_audio
+from tts_client import text_to_speech
 import os
 import logging
 import httpx
@@ -60,6 +61,16 @@ def context_summary():
         "stakeholders": [s["name"] for s in ctx.get("stakeholders", [])],
         "okrs": [kr["kr_id"] for kr in ctx.get("okrs_q2_2026", [])],
     }
+
+async def send_telegram_voice(chat_id: str, audio_bytes: bytes):
+    """Envía un mensaje de voz a Telegram."""
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(
+            f"{TELEGRAM_API}/sendVoice",
+            data={"chat_id": chat_id},
+            files={"voice": ("response.mp3", audio_bytes, "audio/mpeg")}
+        )
+        logger.info(f"Telegram sendVoice response: {r.status_code}")
 
 async def send_telegram_message(chat_id: str, text: str):
     async with httpx.AsyncClient() as client:
@@ -140,14 +151,52 @@ async def telegram_webhook(request: Request):
                 await send_telegram_message(chat_id, "⚠️ No pude entender el audio. Intentá de nuevo.")
                 return {"ok": True}
             await send_telegram_message(chat_id, f"📝 Entendí: {transcribed}")
-            response = chat_with_history(chat_id, transcribed)
-            await send_telegram_message(chat_id, response)
+
+            voice_keywords = ["leeme con voz", "respondeme con voz", "decime con voz", "leelo con voz"]
+            wants_voice = any(k in transcribed.lower() for k in voice_keywords)
+            clean_transcribed = transcribed
+            for k in voice_keywords:
+                clean_transcribed = clean_transcribed.lower().replace(k, "").strip(" :,")
+            if not clean_transcribed:
+                clean_transcribed = transcribed
+
+            response = chat_with_history(chat_id, clean_transcribed)
+
+            if wants_voice:
+                try:
+                    audio_bytes = await text_to_speech(response)
+                    await send_telegram_voice(chat_id, audio_bytes)
+                except Exception as e:
+                    logger.error(f"Error en TTS: {e}")
+                    await send_telegram_message(chat_id, response)
+            else:
+                await send_telegram_message(chat_id, response)
             return {"ok": True}
 
         # Mensaje de texto normal
         if text:
-            response = chat_with_history(chat_id, text)
-            await send_telegram_message(chat_id, response)
+            # Detectar si pide respuesta por voz
+            voice_keywords = ["leeme con voz", "respondeme con voz", "decime con voz", "leelo con voz"]
+            wants_voice = any(k in text.lower() for k in voice_keywords)
+
+            # Limpiar el keyword del mensaje antes de procesarlo
+            clean_text = text
+            for k in voice_keywords:
+                clean_text = clean_text.lower().replace(k, "").strip(" :,")
+            if not clean_text:
+                clean_text = text
+
+            response = chat_with_history(chat_id, clean_text)
+
+            if wants_voice:
+                try:
+                    audio_bytes = await text_to_speech(response)
+                    await send_telegram_voice(chat_id, audio_bytes)
+                except Exception as e:
+                    logger.error(f"Error en TTS: {e}")
+                    await send_telegram_message(chat_id, response)
+            else:
+                await send_telegram_message(chat_id, response)
             return {"ok": True}
 
         return {"ok": True}
