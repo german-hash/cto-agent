@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from agent import chat, chat_with_history, chat_with_history_image, reset_history, daily_briefing
+from whisper_client import transcribe_audio
 import os
 import logging
 import httpx
@@ -124,6 +125,22 @@ async def telegram_webhook(request: Request):
             user_prompt = caption if caption else "Analizá esta imagen del board de Azure DevOps y decime el estado actual de los features y OKRs. Actualizá tu contexto con lo que ves."
 
             response = await chat_with_history_image(chat_id, user_prompt, image_b64)
+            await send_telegram_message(chat_id, response)
+            return {"ok": True}
+
+
+        # Mensaje de voz
+        voice = message.get("voice") or message.get("audio")
+        if voice:
+            await send_telegram_message(chat_id, "🎙️ Escuché tu mensaje, transcribiendo...")
+            audio_bytes = await download_telegram_photo(voice["file_id"])
+            transcribed = await transcribe_audio(audio_bytes, "audio.ogg")
+            logger.info(f"Transcripción: {transcribed}")
+            if not transcribed.strip():
+                await send_telegram_message(chat_id, "⚠️ No pude entender el audio. Intentá de nuevo.")
+                return {"ok": True}
+            await send_telegram_message(chat_id, f"📝 Entendí: {transcribed}")
+            response = chat_with_history(chat_id, transcribed)
             await send_telegram_message(chat_id, response)
             return {"ok": True}
 
