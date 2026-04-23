@@ -222,7 +222,7 @@ def _extract_topics_with_ai(text: str) -> list[str]:
     response = client.messages.create(
         model="claude-opus-4-5",
         max_tokens=500,
-        system="Extraé los temas/puntos tratados en esta nota de reunión. Devolvé SOLO una lista JSON de strings, sin explicación ni markdown. Ejemplo: ["tema 1", "tema 2"]",
+        system='Extraé los temas/puntos tratados en esta nota de reunión. Devolvé SOLO una lista JSON de strings, sin explicación ni markdown. Ejemplo: ["tema 1", "tema 2"]',
         messages=[{"role": "user", "content": text}]
     )
     import json, re
