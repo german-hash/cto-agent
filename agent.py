@@ -197,14 +197,26 @@ async def chat_with_history_image(chat_id: str, user_message: str, image_b64: st
     save_message(chat_id, "assistant", response_text)
     return response_text
 
+def _parse_topics(text: str) -> list[str]:
+    """Parsea un texto con temas separados por comas, puntos o saltos de línea."""
+    import re
+    # Separar por comas, punto y coma, o saltos de línea
+    topics = re.split(r"[,;\n]", text)
+    return [t.strip(" .-") for t in topics if t.strip(" .-")]
+
 def handle_write_intent(message: str) -> str | None:
     """
     Detecta si el mensaje es una intención de escritura en Notion.
-    Retorna el resultado de la acción o None si no aplica.
+    Soporta:
+    - "registrá el 1:1 de hoy con Gallo, autor yo: tema1, tema2, tema3"
+    - "anotá tarea: revisar PR de Zorro"
+    - "guardá en Her: hablamos de roadmap mobile"
     """
     msg = message.lower()
 
-    keywords_write = ["anotá", "anota", "registrá", "registra", "guardá", "guarda", "agregá", "agrega", "escribí", "escribi", "tomá nota", "toma nota"]
+    keywords_write = ["anotá", "anota", "registrá", "registra", "guardá", "guarda",
+                      "agregá", "agrega", "escribí", "escribi", "tomá nota", "toma nota",
+                      "guardame", "anotame", "registrame"]
     is_write = any(k in msg for k in keywords_write)
 
     if not is_write:
@@ -213,24 +225,36 @@ def handle_write_intent(message: str) -> str | None:
     keywords_task = ["tarea", "pendiente", "to do", "todo", "hacer"]
     is_task = any(k in msg for k in keywords_task)
 
+    keywords_1on1 = ["1:1", "one on one", "reunion", "reunión", "1 a 1"]
+    is_1on1 = any(k in msg for k in keywords_1on1)
+
     person = detect_person_in_message(message)
 
+    # Detectar autor si viene en el mensaje (ej: "autor ger", "de parte de ger")
+    import re
+    author = "yo"
+    author_match = re.search(r"autor[:\s]+([\w]+)", msg)
+    if author_match:
+        author = author_match.group(1).capitalize()
+
+    # Extraer contenido después del último ":"
+    content = message
+    if ":" in message:
+        content = message.split(":", 1)[-1].strip()
+
     if is_task:
-        # Extraer el contenido de la tarea — todo después del keyword de escritura
-        for k in keywords_write:
-            if k in msg:
-                idx = msg.index(k) + len(k)
-                task_text = message[idx:].strip(" :,-")
-                return add_task(task_text, person or "")
-        return add_task(message, person or "")
+        return add_task(content, person or "")
+
+    if is_1on1 and person:
+        topics = _parse_topics(content)
+        if not topics:
+            topics = [content]
+        return add_note_to_person(person, topics, author)
 
     if person:
-        # Es una nota para una persona
-        for k in keywords_write:
-            if k in msg:
-                idx = msg.index(k) + len(k)
-                note_text = message[idx:].strip(" :,-")
-                return add_note_to_person(person, note_text)
-        return add_note_to_person(person, message)
+        topics = _parse_topics(content)
+        if not topics:
+            topics = [content]
+        return add_note_to_person(person, topics, author)
 
     return None

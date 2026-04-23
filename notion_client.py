@@ -158,8 +158,11 @@ def get_notion_notes(person: str, max_toggles: int = 5) -> str:
 # Page ID para tareas
 TAREAS_PAGE_ID = "34bb7a3f36a98017996de0cceeefb82f"
 
-def add_note_to_person(person: str, note: str) -> str:
-    """Agrega una nota de reunión a la página de una persona en Notion."""
+def add_note_to_person(person: str, topics: list[str], author: str = "yo") -> str:
+    """
+    Agrega una entrada de reunión a la página de una persona en Notion.
+    Formato: toggle con fecha → heading con autor → bullets con temas.
+    """
     person_key = person.lower().strip()
     page_id = NOTION_PAGES.get(person_key)
 
@@ -167,7 +170,27 @@ def add_note_to_person(person: str, note: str) -> str:
         return f"No encontré página de Notion para '{person}'."
 
     from datetime import datetime
-    today = datetime.now().strftime("%d/%m/%Y")
+    today = datetime.now().strftime("%-d de %B de %Y")
+
+    # Armar children: heading + bullets
+    children = [
+        {
+            "object": "block",
+            "type": "heading_3",
+            "heading_3": {
+                "rich_text": [{"type": "text", "text": {"content": author}}]
+            }
+        }
+    ]
+    for topic in topics:
+        if topic.strip():
+            children.append({
+                "object": "block",
+                "type": "bulleted_list_item",
+                "bulleted_list_item": {
+                    "rich_text": [{"type": "text", "text": {"content": topic.strip()}}]
+                }
+            })
 
     blocks = [
         {
@@ -175,15 +198,7 @@ def add_note_to_person(person: str, note: str) -> str:
             "type": "toggle",
             "toggle": {
                 "rich_text": [{"type": "text", "text": {"content": f"@{today}"}}],
-                "children": [
-                    {
-                        "object": "block",
-                        "type": "bulleted_list_item",
-                        "bulleted_list_item": {
-                            "rich_text": [{"type": "text", "text": {"content": note}}]
-                        }
-                    }
-                ]
+                "children": children
             }
         }
     ]
@@ -196,7 +211,8 @@ def add_note_to_person(person: str, note: str) -> str:
                 json={"children": blocks}
             )
             r.raise_for_status()
-        return f"✅ Nota agregada en la página de {person} para el {today}."
+        topics_str = "\n".join([f"• {t}" for t in topics])
+        return f"✅ Reunión registrada en la página de {person} ({today}):\n{topics_str}"
     except Exception as e:
         return f"Error al escribir en Notion: {str(e)}"
 
