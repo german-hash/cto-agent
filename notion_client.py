@@ -29,6 +29,8 @@ NOTION_PAGES = {
     "diego m": "06c580a5496d4532afc5b315d82c0e1a",
     "marin": "06c580a5496d4532afc5b315d82c0e1a",
     "gonza": "6e048b24cbcf4b12b1cad726f31e6eca",
+    "reunion dce": "bdaf76e99dc5438cb65bb951958a7e83",
+    "dce": "bdaf76e99dc5438cb65bb951958a7e83",
 }
 
 def _get_rich_text(block: dict) -> str:
