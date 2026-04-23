@@ -3,7 +3,7 @@ import os
 import re
 from anthropic import Anthropic
 from supabase import create_client, Client
-from notion_client import get_notion_notes, NOTION_PAGES
+from notion_client import get_notion_notes, add_note_to_person, add_task, NOTION_PAGES
 
 client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
@@ -116,6 +116,13 @@ def chat(messages: list[dict]) -> str:
 
 def chat_with_history(chat_id: str, user_message: str) -> str:
     """Chat con historial persistido en Supabase, con enriquecimiento de Notion."""
+    # Detectar intención de escritura en Notion
+    write_result = handle_write_intent(user_message)
+    if write_result:
+        save_message(chat_id, "user", user_message)
+        save_message(chat_id, "assistant", write_result)
+        return write_result
+
     # Enriquecer con Notion si aplica
     enriched_message = enrich_message_with_notion(user_message)
 
@@ -189,3 +196,41 @@ async def chat_with_history_image(chat_id: str, user_message: str, image_b64: st
     response_text = text_block.text if text_block else "Sin respuesta."
     save_message(chat_id, "assistant", response_text)
     return response_text
+
+def handle_write_intent(message: str) -> str | None:
+    """
+    Detecta si el mensaje es una intención de escritura en Notion.
+    Retorna el resultado de la acción o None si no aplica.
+    """
+    msg = message.lower()
+
+    keywords_write = ["anotá", "anota", "registrá", "registra", "guardá", "guarda", "agregá", "agrega", "escribí", "escribi", "tomá nota", "toma nota"]
+    is_write = any(k in msg for k in keywords_write)
+
+    if not is_write:
+        return None
+
+    keywords_task = ["tarea", "pendiente", "to do", "todo", "hacer"]
+    is_task = any(k in msg for k in keywords_task)
+
+    person = detect_person_in_message(message)
+
+    if is_task:
+        # Extraer el contenido de la tarea — todo después del keyword de escritura
+        for k in keywords_write:
+            if k in msg:
+                idx = msg.index(k) + len(k)
+                task_text = message[idx:].strip(" :,-")
+                return add_task(task_text, person or "")
+        return add_task(message, person or "")
+
+    if person:
+        # Es una nota para una persona
+        for k in keywords_write:
+            if k in msg:
+                idx = msg.index(k) + len(k)
+                note_text = message[idx:].strip(" :,-")
+                return add_note_to_person(person, note_text)
+        return add_note_to_person(person, message)
+
+    return None

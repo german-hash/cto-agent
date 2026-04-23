@@ -154,3 +154,80 @@ def get_notion_notes(person: str, max_toggles: int = 5) -> str:
         return f"Error al acceder a Notion para '{person}': {e.response.status_code} - {e.response.text}"
     except Exception as e:
         return f"Error inesperado al leer Notion: {str(e)}"
+
+# Page ID para tareas
+TAREAS_PAGE_ID = "34bb7a3f36a98017996de0cceeefb82f"
+
+def add_note_to_person(person: str, note: str) -> str:
+    """Agrega una nota de reunión a la página de una persona en Notion."""
+    person_key = person.lower().strip()
+    page_id = NOTION_PAGES.get(person_key)
+
+    if not page_id:
+        return f"No encontré página de Notion para '{person}'."
+
+    from datetime import datetime
+    today = datetime.now().strftime("%d/%m/%Y")
+
+    blocks = [
+        {
+            "object": "block",
+            "type": "toggle",
+            "toggle": {
+                "rich_text": [{"type": "text", "text": {"content": f"@{today}"}}],
+                "children": [
+                    {
+                        "object": "block",
+                        "type": "bulleted_list_item",
+                        "bulleted_list_item": {
+                            "rich_text": [{"type": "text", "text": {"content": note}}]
+                        }
+                    }
+                ]
+            }
+        }
+    ]
+
+    try:
+        with httpx.Client(timeout=15) as client:
+            r = client.patch(
+                f"{NOTION_API}/blocks/{page_id}/children",
+                headers=HEADERS,
+                json={"children": blocks}
+            )
+            r.raise_for_status()
+        return f"✅ Nota agregada en la página de {person} para el {today}."
+    except Exception as e:
+        return f"Error al escribir en Notion: {str(e)}"
+
+def add_task(task: str, person: str = "") -> str:
+    """Agrega una tarea a la página de Tareas CTO Agent."""
+    from datetime import datetime
+    today = datetime.now().strftime("%d/%m/%Y")
+
+    text = f"[{today}] {task}"
+    if person:
+        text += f" — {person}"
+
+    blocks = [
+        {
+            "object": "block",
+            "type": "to_do",
+            "to_do": {
+                "rich_text": [{"type": "text", "text": {"content": text}}],
+                "checked": False
+            }
+        }
+    ]
+
+    try:
+        with httpx.Client(timeout=15) as client:
+            r = client.patch(
+                f"{NOTION_API}/blocks/{TAREAS_PAGE_ID}/children",
+                headers=HEADERS,
+                json={"children": blocks}
+            )
+            r.raise_for_status()
+        return f"✅ Tarea agregada: {text}"
+    except Exception as e:
+        return f"Error al escribir tarea en Notion: {str(e)}"
