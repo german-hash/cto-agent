@@ -58,27 +58,54 @@ def build_system_prompt() -> str:
     context = load_context()
     return SYSTEM_PROMPT_TEMPLATE.format(context=context)
 
+import time
+
+def _supabase_retry(fn, retries=3, delay=2):
+    """Ejecuta una función de Supabase con reintentos."""
+    for i in range(retries):
+        try:
+            return fn()
+        except Exception as e:
+            if i == retries - 1:
+                raise
+            time.sleep(delay)
+
 def get_history(chat_id: str, limit: int = 20) -> list[dict]:
-    result = supabase.table("conversation_history") \
-        .select("role, content") \
-        .eq("chat_id", chat_id) \
-        .order("created_at", desc=False) \
-        .limit(limit) \
-        .execute()
-    return [{"role": r["role"], "content": r["content"]} for r in result.data]
+    def _fn():
+        result = supabase.table("conversation_history") \
+            .select("role, content") \
+            .eq("chat_id", chat_id) \
+            .order("created_at", desc=False) \
+            .limit(limit) \
+            .execute()
+        return [{"role": r["role"], "content": r["content"]} for r in result.data]
+    try:
+        return _supabase_retry(_fn)
+    except Exception:
+        return []
 
 def save_message(chat_id: str, role: str, content: str):
-    supabase.table("conversation_history").insert({
-        "chat_id": chat_id,
-        "role": role,
-        "content": content
-    }).execute()
+    def _fn():
+        supabase.table("conversation_history").insert({
+            "chat_id": chat_id,
+            "role": role,
+            "content": content
+        }).execute()
+    try:
+        _supabase_retry(_fn)
+    except Exception:
+        pass  # No bloquear si falla el guardado
 
 def reset_history(chat_id: str):
-    supabase.table("conversation_history") \
-        .delete() \
-        .eq("chat_id", chat_id) \
-        .execute()
+    def _fn():
+        supabase.table("conversation_history") \
+            .delete() \
+            .eq("chat_id", chat_id) \
+            .execute()
+    try:
+        _supabase_retry(_fn)
+    except Exception:
+        pass
 
 def detect_person_in_message(message: str) -> str | None:
     """Detecta si el mensaje menciona a alguien del equipo."""
