@@ -3,7 +3,7 @@ import os
 import re
 from anthropic import Anthropic
 from supabase import create_client, Client
-from notion_client import get_notion_notes, add_note_to_person, add_task, get_tasks, NOTION_PAGES
+from notion_client import get_notion_notes, add_note_to_person, add_task, get_tasks, add_general_note, NOTION_PAGES
 
 client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
@@ -321,5 +321,29 @@ def handle_write_intent(message: str) -> str | None:
         if not topics:
             topics = [content]
         return add_note_to_person(person, topics, author)
+
+    # Nota general (sin persona específica)
+    keywords_note = ["toma nota", "tomá nota", "toma esta nota", "tomá esta nota", "anotá esto", "anota esto"]
+    is_general_note = any(k in msg for k in keywords_note)
+
+    if is_general_note:
+        # Extraer título — buscar "sobre [tema]" o "de [tema]"
+        import re
+        title_match = re.search(r"(?:sobre|de|para)\s+([^:,\.]+)", msg)
+        title = title_match.group(1).strip().title() if title_match else "Nota"
+
+        # Extraer contenido después de ":" si existe
+        if ":" in message:
+            raw_content = message.split(":", 1)[-1].strip()
+        else:
+            # Quitar los keywords del mensaje
+            raw_content = message
+            for k in keywords_note:
+                raw_content = raw_content.lower().replace(k, "").strip()
+
+        topics = _extract_topics_with_ai(raw_content) if len(raw_content) > 50 else _parse_topics(raw_content)
+        if not topics:
+            topics = [raw_content]
+        return add_general_note(title, topics)
 
     return None

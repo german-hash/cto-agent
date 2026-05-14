@@ -259,3 +259,55 @@ def get_tasks() -> str:
         return "📋 Tareas CTO Agent:\n" + "\n".join(lines)
     except Exception as e:
         return f"Error al leer tareas: {str(e)}"
+
+# Page ID para notas generales
+MIS_NOTAS_PAGE_ID = "35eb7a3f36a980618174edbdea501b5c"
+
+def add_general_note(title: str, topics: list[str]) -> str:
+    """
+    Agrega una nota general a la página Mis Notas.
+    Formato: toggle con título + fecha → bullets con temas.
+    """
+    from datetime import datetime
+    today = datetime.now().strftime("%-d/%m/%Y")
+
+    children = []
+    for topic in topics:
+        if topic.strip():
+            children.append({
+                "object": "block",
+                "type": "bulleted_list_item",
+                "bulleted_list_item": {
+                    "rich_text": [{"type": "text", "text": {"content": topic.strip()}}]
+                }
+            })
+
+    blocks = [
+        {
+            "object": "block",
+            "type": "toggle",
+            "toggle": {
+                "rich_text": [{"type": "text", "text": {"content": f"📅 {title} — {today}"}}],
+                "children": children if children else [
+                    {
+                        "object": "block",
+                        "type": "paragraph",
+                        "paragraph": {"rich_text": [{"type": "text", "text": {"content": ""}}]}
+                    }
+                ]
+            }
+        }
+    ]
+
+    try:
+        with httpx.Client(timeout=15) as client:
+            r = client.patch(
+                f"{NOTION_API}/blocks/{MIS_NOTAS_PAGE_ID}/children",
+                headers=HEADERS,
+                json={"children": blocks}
+            )
+            r.raise_for_status()
+        topics_str = "\n".join([f"• {t}" for t in topics])
+        return f"✅ Nota guardada en Mis Notas:\n📅 {title} — {today}\n{topics_str}"
+    except Exception as e:
+        return f"Error al guardar nota: {str(e)}"
