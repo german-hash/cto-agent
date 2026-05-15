@@ -3,7 +3,7 @@ import os
 import re
 from anthropic import Anthropic
 from supabase import create_client, Client
-from notion_client import get_notion_notes, add_note_to_person, add_task, get_tasks, add_general_note, NOTION_PAGES
+from notion_client import get_notion_notes, add_note_to_person, add_task, get_tasks, add_general_note, sync_notion_to_memory, NOTION_PAGES
 
 client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
@@ -192,6 +192,51 @@ def chat_with_history(chat_id: str, user_message: str) -> str:
     response_text = text_block.text if text_block else "Sin respuesta."
     save_message(chat_id, "assistant", response_text)
     return response_text
+
+def _do_sync(chat_id: str, max_toggles: int) -> str:
+    """Ejecuta la sincronización de Notion a memoria."""
+    # Borrar memoria existente de Notion
+    def _clear():
+        supabase.table("cto_memory")             .delete()             .eq("category", "notion_sync")             .execute()
+    try:
+        _supabase_retry(_clear)
+    except Exception:
+        pass
+
+    # Leer todas las páginas
+    results = sync_notion_to_memory(max_toggles_per_page=max_toggles)
+
+    if not results:
+        return "⚠️ No encontré contenido en Notion para sincronizar."
+
+    # Guardar cada página como entrada de memoria
+    saved = 0
+    for name, notes in results.items():
+        if notes and len(notes) > 50:
+            def _save(n=name, c=notes):
+                supabase.table("cto_memory").insert({
+                    "category": "notion_sync",
+                    "content": f"[{n.upper()}]\n{c[:2000]}"
+                }).execute()
+            try:
+                _supabase_retry(_save)
+                saved += 1
+            except Exception:
+                pass
+
+    return f"✅ Sincronización completa. {saved} páginas de Notion guardadas en memoria.\nAhora tengo contexto actualizado de tu equipo y reuniones."
+
+def sync_full(chat_id: str) -> str:
+    """Sincroniza todo el historial de Notion a memoria."""
+    return _do_sync(chat_id, max_toggles=999)
+
+def sync_week(chat_id: str) -> str:
+    """Sincroniza los últimos toggles de la semana (aprox 2-3 por página)."""
+    return _do_sync(chat_id, max_toggles=3)
+
+def sync_delta(chat_id: str) -> str:
+    """Sincroniza solo el último toggle de cada página."""
+    return _do_sync(chat_id, max_toggles=1)
 
 def daily_briefing(chat_id: str) -> str:
     prompt = """Generame el briefing diario de hoy. Incluí:

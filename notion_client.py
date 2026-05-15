@@ -314,3 +314,32 @@ def add_general_note(title: str, topics: list[str]) -> str:
         return f"✅ Nota guardada en Mis Notas:\n📅 {title} — {today}\n{topics_str}"
     except Exception as e:
         return f"Error al guardar nota: {str(e)}"
+
+def sync_notion_to_memory(max_toggles_per_page: int = 999) -> dict:
+    """
+    Lee todas las páginas de Notion y devuelve un dict {person: notes}.
+    max_toggles_per_page controla cuántos toggles traer por página.
+    """
+    results = {}
+    all_pages = {**NOTION_PAGES}
+    # Agregar páginas especiales
+    all_pages["tareas"] = TAREAS_PAGE_ID
+    all_pages["mis_notas"] = MIS_NOTAS_PAGE_ID
+
+    # Deduplicar por page_id
+    seen_ids = set()
+    unique_pages = {}
+    for name, page_id in all_pages.items():
+        if page_id not in seen_ids:
+            seen_ids.add(page_id)
+            unique_pages[name] = page_id
+
+    for name, page_id in unique_pages.items():
+        try:
+            notes = get_notion_notes(name, max_toggles=max_toggles_per_page)
+            if notes and "no tiene contenido" not in notes and "No encontré" not in notes:
+                results[name] = notes
+        except Exception as e:
+            results[name] = f"Error: {str(e)}"
+
+    return results

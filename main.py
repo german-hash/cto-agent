@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from agent import chat, chat_with_history, chat_with_history_image, reset_history, daily_briefing
+from agent import chat, chat_with_history, chat_with_history_image, reset_history, daily_briefing, sync_full, sync_week, sync_delta
 from whisper_client import transcribe_audio
 from tts_client import text_to_speech
 import os
@@ -13,6 +13,68 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+
+HELP_TEXT = """🤖 *AgenteCTO — Comandos y funciones*
+
+━━━━━━━━━━━━━━━━━━━
+📋 *COMANDOS*
+━━━━━━━━━━━━━━━━━━━
+/briefing — Resumen del día (1:1s, OKRs, alertas)
+/sync — Sincroniza última entrada de cada página de Notion
+/sync_week — Sincroniza últimas 3 entradas por página
+/sync_full — Sincroniza todo el historial de Notion
+/reset — Borra el historial de conversación
+/help — Esta ayuda
+
+━━━━━━━━━━━━━━━━━━━
+📝 *REGISTRAR EN NOTION*
+━━━━━━━━━━━━━━━━━━━
+1:1 de hoy:
+"registrá el 1:1 de hoy con [persona]: tema1, tema2"
+
+Nota general (Mis Notas):
+"toma nota sobre [tema]: detalle1, detalle2"
+"registrame en Notion una nota con [tema]: ..."
+
+Tarea pendiente:
+"registrá tarea: [descripción]"
+"anotá pendiente: [descripción]"
+
+━━━━━━━━━━━━━━━━━━━
+📖 *LEER DE NOTION*
+━━━━━━━━━━━━━━━━━━━
+"leeme el 1:1 de [persona]"
+"leeme las tareas pendientes"
+"resumen de 1:1 de la semana"
+"qué temas hablamos con [persona]?"
+
+━━━━━━━━━━━━━━━━━━━
+🎙️ *VOZ*
+━━━━━━━━━━━━━━━━━━━
+Mandá un audio → el agente lo transcribe y responde
+"leeme con voz [pregunta]" → responde con audio
+"leelo con voz" → ídem
+
+━━━━━━━━━━━━━━━━━━━
+🧠 *MEMORIA PERSISTENTE*
+━━━━━━━━━━━━━━━━━━━
+"recordá que [hecho importante]"
+→ Se guarda y recuerda aunque hagas /reset
+
+━━━━━━━━━━━━━━━━━━━
+📸 *IMAGEN*
+━━━━━━━━━━━━━━━━━━━
+Mandá un screenshot del board de Azure DevOps
+→ El agente analiza el estado de features y OKRs
+
+━━━━━━━━━━━━━━━━━━━
+🗂️ *PREPARAR REUNIONES*
+━━━━━━━━━━━━━━━━━━━
+"preparame el 1:1 con [persona]"
+→ Agenda con contexto real de Notion
+
+"generame un update para [stakeholder]"
+→ Resumen ejecutivo para Diego M, Pablo E o Carly"""
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"
 
 app = FastAPI(title="CTO Agent", version="3.0.0")
@@ -120,6 +182,30 @@ async def telegram_webhook(request: Request):
         # Comando /briefing
         if text.lower() == "/briefing":
             response = daily_briefing(chat_id)
+            await send_telegram_message(chat_id, response)
+            return {"ok": True}
+
+        # Comando /help
+        if text.lower() == "/help":
+            await send_telegram_message(chat_id, HELP_TEXT)
+            return {"ok": True}
+
+        # Comandos de sincronización con Notion
+        if text.lower() == "/sync_full":
+            await send_telegram_message(chat_id, "🔄 Sincronizando todo el historial de Notion... puede tardar unos segundos.")
+            response = sync_full(chat_id)
+            await send_telegram_message(chat_id, response)
+            return {"ok": True}
+
+        if text.lower() == "/sync_week":
+            await send_telegram_message(chat_id, "🔄 Sincronizando últimas reuniones de la semana...")
+            response = sync_week(chat_id)
+            await send_telegram_message(chat_id, response)
+            return {"ok": True}
+
+        if text.lower() == "/sync":
+            await send_telegram_message(chat_id, "🔄 Sincronizando última entrada de cada página...")
+            response = sync_delta(chat_id)
             await send_telegram_message(chat_id, response)
             return {"ok": True}
 
