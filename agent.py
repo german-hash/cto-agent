@@ -255,8 +255,7 @@ def get_memory() -> str:
         lines = []
         for r in result.data:
             lines.append(f"[{r['category'].upper()}] {r['content']}")
-        return "
-".join(lines)
+        return "\n".join(lines)
     try:
         return _supabase_retry(_fn)
     except Exception:
