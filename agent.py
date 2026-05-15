@@ -56,7 +56,11 @@ def load_context(path: str = "context.json") -> str:
 
 def build_system_prompt() -> str:
     context = load_context()
-    return SYSTEM_PROMPT_TEMPLATE.format(context=context)
+    memory = get_memory()
+    memory_section = f"
+== MEMORIA PERSISTENTE ==
+{memory}" if memory else ""
+    return SYSTEM_PROMPT_TEMPLATE.format(context=context) + memory_section
 
 import time
 
@@ -244,6 +248,35 @@ async def chat_with_history_image(chat_id: str, user_message: str, image_b64: st
     save_message(chat_id, "assistant", response_text)
     return response_text
 
+def get_memory() -> str:
+    """Lee toda la memoria persistente de Supabase."""
+    def _fn():
+        result = supabase.table("cto_memory")             .select("category, content")             .order("created_at", desc=False)             .execute()
+        if not result.data:
+            return ""
+        lines = []
+        for r in result.data:
+            lines.append(f"[{r['category'].upper()}] {r['content']}")
+        return "
+".join(lines)
+    try:
+        return _supabase_retry(_fn)
+    except Exception:
+        return ""
+
+def save_memory(category: str, content: str) -> str:
+    """Guarda un hecho en la memoria persistente."""
+    def _fn():
+        supabase.table("cto_memory").insert({
+            "category": category.lower().strip(),
+            "content": content.strip()
+        }).execute()
+    try:
+        _supabase_retry(_fn)
+        return f"✅ Guardé en memoria [{category}]: {content}"
+    except Exception as e:
+        return f"Error al guardar en memoria: {str(e)}"
+
 def _extract_topics_with_ai(text: str) -> list[str]:
     """Usa Claude para extraer los temas de un texto libre de reunión."""
     response = client.messages.create(
@@ -294,6 +327,25 @@ def handle_write_intent(message: str) -> str | None:
     keywords_1on1 = ["1:1", "one on one", "reunion", "reunión", "1 a 1", "uno a uno", "el 1", "registro", "registrar en"]
     is_1on1 = any(k in msg for k in keywords_1on1)
 
+    # Nota general — evaluar ANTES de buscar persona para evitar falsos positivos
+    keywords_note = ["toma nota", "tomá nota", "toma esta nota", "tomá esta nota", "anotá esto", "anota esto"]
+    is_general_note = any(k in msg for k in keywords_note)
+
+    if is_general_note and not is_1on1 and not is_task:
+        import re
+        title_match = re.search(r"(?:sobre|de|para)\s+([^:,\.]+)", msg)
+        title = title_match.group(1).strip().title() if title_match else "Nota"
+        if ":" in message:
+            raw_content = message.split(":", 1)[-1].strip()
+        else:
+            raw_content = message
+            for k in keywords_note:
+                raw_content = raw_content.lower().replace(k, "").strip()
+        topics = _extract_topics_with_ai(raw_content) if len(raw_content) > 50 else _parse_topics(raw_content)
+        if not topics:
+            topics = [raw_content]
+        return add_general_note(title, topics)
+
     person = detect_person_in_message(message)
 
     # Detectar autor si viene en el mensaje (ej: "autor ger", "de parte de ger")
@@ -322,28 +374,29 @@ def handle_write_intent(message: str) -> str | None:
             topics = [content]
         return add_note_to_person(person, topics, author)
 
-    # Nota general (sin persona específica)
-    keywords_note = ["toma nota", "tomá nota", "toma esta nota", "tomá esta nota", "anotá esto", "anota esto"]
-    is_general_note = any(k in msg for k in keywords_note)
+    # Guardar en memoria persistente
+    keywords_memory = ["recordá que", "recorda que", "guardá en memoria", "guarda en memoria", "memorizá", "memoriza"]
+    is_memory = any(k in msg for k in keywords_memory)
 
-    if is_general_note:
-        # Extraer título — buscar "sobre [tema]" o "de [tema]"
+    if is_memory:
+        # Detectar categoría
         import re
-        title_match = re.search(r"(?:sobre|de|para)\s+([^:,\.]+)", msg)
-        title = title_match.group(1).strip().title() if title_match else "Nota"
+        cat_map = {
+            "persona": ["her", "gallo", "pablo", "gonza", "diego", "zorro", "saez", "caro", "pili", "alex"],
+            "proyecto": ["proyecto", "feature", "kr", "okr", "sprint", "release"],
+            "decision": ["decidimos", "decision", "decisión", "acordamos", "vamos a"],
+            "seguimiento": ["seguimiento", "pendiente", "falta", "hay que"],
+        }
+        category = "contexto"
+        for cat, keywords in cat_map.items():
+            if any(k in msg for k in keywords):
+                category = cat
+                break
 
-        # Extraer contenido después de ":" si existe
-        if ":" in message:
-            raw_content = message.split(":", 1)[-1].strip()
-        else:
-            # Quitar los keywords del mensaje
-            raw_content = message
-            for k in keywords_note:
-                raw_content = raw_content.lower().replace(k, "").strip()
-
-        topics = _extract_topics_with_ai(raw_content) if len(raw_content) > 50 else _parse_topics(raw_content)
-        if not topics:
-            topics = [raw_content]
-        return add_general_note(title, topics)
+        # Extraer contenido
+        raw = message
+        for k in keywords_memory:
+            raw = raw.lower().replace(k, "").strip(" :,-")
+        return save_memory(category, raw if raw else message)
 
     return None

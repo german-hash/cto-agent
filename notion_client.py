@@ -29,6 +29,9 @@ NOTION_PAGES = {
     "diego m": "06c580a5496d4532afc5b315d82c0e1a",
     "marin": "06c580a5496d4532afc5b315d82c0e1a",
     "gonza": "6e048b24cbcf4b12b1cad726f31e6eca",
+    "caro": "987f4be1c02a49ad8f56355fe9deb4e0",
+    "caro qa": "987f4be1c02a49ad8f56355fe9deb4e0",
+    "diego c": "360b7a3f36a98096a251fc40b34e43a3",
     "reunion dce": "bdaf76e99dc5438cb65bb951958a7e83",
     "dce": "bdaf76e99dc5438cb65bb951958a7e83",
 }
