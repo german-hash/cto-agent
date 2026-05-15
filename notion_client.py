@@ -321,15 +321,11 @@ def sync_notion_to_memory(max_toggles_per_page: int = 999) -> dict:
     max_toggles_per_page controla cuántos toggles traer por página.
     """
     results = {}
-    all_pages = {**NOTION_PAGES}
-    # Agregar páginas especiales
-    all_pages["tareas"] = TAREAS_PAGE_ID
-    all_pages["mis_notas"] = MIS_NOTAS_PAGE_ID
 
-    # Deduplicar por page_id
+    # Páginas de 1:1 — deduplicar por page_id
     seen_ids = set()
     unique_pages = {}
-    for name, page_id in all_pages.items():
+    for name, page_id in NOTION_PAGES.items():
         if page_id not in seen_ids:
             seen_ids.add(page_id)
             unique_pages[name] = page_id
@@ -341,5 +337,22 @@ def sync_notion_to_memory(max_toggles_per_page: int = 999) -> dict:
                 results[name] = notes
         except Exception as e:
             results[name] = f"Error: {str(e)}"
+
+    # Tareas CTO Agent
+    try:
+        tasks = get_tasks()
+        if tasks and "No hay tareas" not in tasks:
+            results["tareas"] = tasks
+    except Exception as e:
+        results["tareas"] = f"Error: {str(e)}"
+
+    # Mis Notas
+    try:
+        with httpx.Client(timeout=20) as client:
+            lines = _fetch_children(MIS_NOTAS_PAGE_ID, client, depth=0)
+        if lines:
+            results["mis_notas"] = "📋 Mis Notas:\n" + "\n".join(lines)
+    except Exception as e:
+        results["mis_notas"] = f"Error: {str(e)}"
 
     return results
