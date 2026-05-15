@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+import asyncio
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from agent import chat, chat_with_history, chat_with_history_image, reset_history, daily_briefing, sync_full, sync_week, sync_delta
@@ -158,7 +159,7 @@ async def download_telegram_photo(file_id: str) -> bytes:
         return r.content
 
 @app.post("/telegram/webhook")
-async def telegram_webhook(request: Request):
+async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     chat_id = ""
     try:
         data = await request.json()
@@ -196,22 +197,21 @@ async def telegram_webhook(request: Request):
             return {"ok": True}
 
         # Comandos de sincronización con Notion
-        if text.lower() == "/sync_full":
-            await send_telegram_message(chat_id, "🔄 Sincronizando todo el historial de Notion... puede tardar unos segundos.")
-            response = sync_full(chat_id)
+        async def run_sync(fn, msg):
+            await send_telegram_message(chat_id, msg)
+            response = fn(chat_id)
             await send_telegram_message(chat_id, response)
+
+        if text.lower() == "/sync_full":
+            background_tasks.add_task(run_sync, sync_full, "🔄 Sincronizando todo el historial de Notion... puede tardar unos segundos.")
             return {"ok": True}
 
         if text.lower() == "/sync_week":
-            await send_telegram_message(chat_id, "🔄 Sincronizando últimas reuniones de la semana...")
-            response = sync_week(chat_id)
-            await send_telegram_message(chat_id, response)
+            background_tasks.add_task(run_sync, sync_week, "🔄 Sincronizando últimas reuniones de la semana...")
             return {"ok": True}
 
         if text.lower() == "/sync":
-            await send_telegram_message(chat_id, "🔄 Sincronizando última entrada de cada página...")
-            response = sync_delta(chat_id)
-            await send_telegram_message(chat_id, response)
+            background_tasks.add_task(run_sync, sync_delta, "🔄 Sincronizando última entrada de cada página...")
             return {"ok": True}
 
         # Mensaje con imagen
