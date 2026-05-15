@@ -325,7 +325,7 @@ def handle_write_intent(message: str) -> str | None:
     is_1on1 = any(k in msg for k in keywords_1on1)
 
     # Nota general — evaluar ANTES de buscar persona para evitar falsos positivos
-    keywords_note = ["toma nota", "tomá nota", "toma esta nota", "tomá esta nota", "anotá esto", "anota esto"]
+    keywords_note = ["toma nota", "tomá nota", "toma esta nota", "tomá esta nota", "anotá esto", "anota esto", "registrame en notion", "registrá en notion", "guardá en notion", "guarda en notion", "nota en notion", "agregá en notion"]
     is_general_note = any(k in msg for k in keywords_note)
 
     if is_general_note and not is_1on1 and not is_task:
