@@ -170,6 +170,11 @@ async def telegram_webhook(request: Request):
         photos = message.get("photo", [])
         caption = message.get("caption", "").strip()
 
+        # Ignorar mensajes del propio bot
+        from_user = message.get("from", {})
+        if from_user.get("is_bot", False):
+            return {"ok": True}
+
         if not chat_id:
             return {"ok": True}
 
