@@ -57,9 +57,7 @@ def load_context(path: str = "context.json") -> str:
 def build_system_prompt() -> str:
     context = load_context()
     memory = get_memory()
-    memory_section = f"
-== MEMORIA PERSISTENTE ==
-{memory}" if memory else ""
+    memory_section = ("\n== MEMORIA PERSISTENTE ==\n" + memory) if memory else ""
     return SYSTEM_PROMPT_TEMPLATE.format(context=context) + memory_section
 
 import time
